@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html >
+<head>
+	<meta charset="UTF-8">
+	<title>synoFileCheck</title>
+	<style>
+		html, body {font-size: 16px;}
+		h2, h3, h4 {margin: auto; padding: 3px; width: max-content; text-align: center;}
+		.buttonarea {
+			margin: 10px 10px; justify-content: space-between; align-items: stretch; display: flex; flex-wrap: wrap; border-top: solid 1px rgba(192, 38, 14, 0.5); padding-top: 10px;}
+		.button2 {
+			background-color: transparent; border: 1px solid #c0260e; border-radius: 4px; color: #c0260e; padding: 10px; text-align: center; text-decoration: none; display: inline-block; font-size: 18px; margin: 5px; cursor: pointer; transition: all .15s ease-in-out; min-width: 140px;}
+		.button2:focus, .button2:active {
+			box-shadow: 0 0 0 3px rgba(192,38,14,.25); outline-width: 0px; outline-color: #c0260e;}
+		.button2:disabled, .button2[disabled]{
+			border: 1px solid #999999; background-color: #cccccc; color: #666666;}
+		#P0 {margin: auto; padding: 3px; width: max-content; background-color: #efefefaf;}
+		#P1 {margin: auto; padding: 3px; width: max-content; background-color: #efefefaf;}
+		#P2 {margin: auto; padding: 3px; width: max-content; max-width: 90%; background-color: #efefefaf; display: none;}
+		#P3 {margin: auto; padding: 3px; width: 90%; background-color: #efefefcf; display: none;}
+
+		.panel {
+			font-family: monospace; font-size: 12px; padding: 0 18px; background-color: white; max-height: 0; overflow: hidden; transition: max-height 0.2s ease-out;}
+		.category {font-weight: bold;}
+		.count {font-weight: bold; color: #707;}
+		.filename {}
+		.foldername {padding-left: 25px; background-color: #f7f;}
+		.panel .filename:nth-child(even) {background-color: #ddf;}
+		.panel .filename:nth-child(even) {background-color: #fdd;}
+
+		#P3 input, #P3 textarea {
+			width: 90%; border: 2px solid #ccc; border-radius: 7px; background-color: #f8f8f8; padding: 6px 12px; font-size: 14px; font-family: monospace;}
+		#P3 input {height: 20px;}
+		#P3 textarea {height: 40px;}
+		#P3back, #P3next {font-size: 32px;}
+
+		button.accordion {
+			background-color: #eee; color: #444; cursor: pointer; padding: 18px; width: 100%; border: none; border-radius: 15px; text-align: left; outline: none; font-size: 15px; transition: 0.4s;}
+		button.accordion.active, button.accordion:hover {background-color: #ddd;}
+		button.accordion:after {
+			content: '\02795'; font-size: 13px; color: #777; float: right; margin-left: 5px;}
+		button.accordion.active:after {content: "\2796";}
+	</style>
+	<script>
+	var resultsJSON, longNames;
+	document.addEventListener('DOMContentLoaded', initpage);
+//	------------------------------------------------------------
+	String.prototype.rsplit = function(sep, maxsplit) {
+		let split = this.split(sep);
+		return maxsplit ? [split.slice(0, -maxsplit).join(sep)].concat(split.slice(-maxsplit)) : split;
+	}
+//	------------------------------------------------------------
+	function initpage() {
+		document.getElementById('loadresultfilebutton').disabled = true;
+		document.getElementById('buttonP1').disabled = false;
+		document.getElementById('buttonP2').disabled = true;
+		document.getElementById('buttonP3').disabled = true;
+	}
+//	------------------------------------------------------------
+	function showPage(page) {
+		switch (page) {
+			case 'P1':
+				document.getElementById('buttonP2').disabled = true;
+				document.getElementById('buttonP3').disabled = true;
+				break;
+			case 'P2':
+				document.getElementById('buttonP2').disabled = false;
+				document.getElementById('buttonP3').disabled = false;
+				displayResults();
+				break;
+			case 'P3':
+				document.getElementById('buttonP2').disabled = false;
+				document.getElementById('buttonP3').disabled = false;
+				editLongFilenames();
+				break;
+		}
+		['P1', 'P2', 'P3'].forEach(item => {
+			document.getElementById(item).style.display = (item == page) ? 'block' : 'none'
+		});
+	}
+//	------------------------------------------------------------
+	function displayResults() {
+		let out = '', litem, folderA, folderB;
+		let itemtext = {};
+		itemtext['only_left_folders'] = "Folders only in Source";
+		itemtext['only_left_files'] = "Files only in Source";
+		itemtext['only_left_errors'] = "Errors only in Source";
+		itemtext['only_right_folders'] = "Folders only in Destination";
+		itemtext['only_right_files'] = "Files only in Destination";
+		itemtext['only_right_errors'] = "Errors only in Destination";
+		itemtext['funny_names'] = "Funny names";
+		itemtext['diff_files'] = "Files not matching";
+		itemtext['error_files'] = "Errors with file handling";
+
+		Object.keys(resultsJSON).forEach(key => {
+			console.log('displayResults', key, resultsJSON[key]);
+			litem = resultsJSON[key].length;
+			if (litem > 0) {
+				out += '<button class="accordion"><br><span class="category">' + itemtext[key] + ': </span><span class="count">' + litem + '</span></button>';
+				out += '<div class="panel">';
+				folderA = folderB = '';
+				resultsJSON[key].forEach(ele => {
+					if (folderA != ele.left || folderB != ele.right) {
+						out += '<div class="foldername">' + ele.left + ' &#8658; ' + ele.right + '</div>';
+						folderA = ele.left;
+						folderB = ele.right;
+					}
+					out += '<div class="filename">' + ele.name + '</div>';
+				});
+				out += '</div>';
+			}
+		});
+		document.getElementById('P2content').innerHTML = out;
+		setupAccordion();
+	}
+//	------------------------------------------------------------
+	function editLongFilenames() {
+		console.log('editLongFilenames');
+		const maxfilenamelength = document.getElementById('P3maxfilename').value;
+		longNames = [];
+		let current = 0;
+		if (resultsJSON['only_left_files'].length > 0) {
+			resultsJSON['only_left_files'].forEach(ele => {
+				if (ele.name.length > maxfilenamelength) {
+					longNames.push({'enable': true, 'left': ele.left, 'right': ele.right, 'old': ele.name, 'new': shortenFilename(ele.name, maxfilenamelength)});
+				}
+			});
+			document.getElementById('P3record').value = 1;
+			document.getElementById('P3recordcount').value = longNames.length;
+			displaycurrentP3();
+			document.getElementById('P3info').innerHTML = '';
+		} else {
+			document.getElementById('P3info').innerHTML = 'No file names longer than ' + maxfilenamelength + ' found';
+		}
+	}
+//	------------------------------------------------------------
+	function shortenFilename(filename, maxlen) {
+		parts = filename.rsplit('.', 1);
+		return parts[0].substring(0, maxlen-parts[1].length-1) + '.' + parts[1]
+	}
+//	------------------------------------------------------------
+	function displaycurrentP3() {
+		let current = parseInt(document.getElementById('P3record').value);
+		if (current < 1) {
+			current = 0;
+			document.getElementById('P3record').value = current + 1;
+		} else if (current > longNames.length) {
+			current = longNames.length - 1;
+			document.getElementById('P3record').value = current + 1;
+		} else {
+			current  = current - 1;
+		}
+		document.getElementById('P3enable').checked = longNames[current]['enable'];
+		document.getElementById('P3folderA').value = longNames[current]['left'];
+		document.getElementById('P3folderB').value = longNames[current]['right'];
+		document.getElementById('P3old').value = longNames[current]['old'];
+		document.getElementById('P3new').value = longNames[current]['new'];
+		document.getElementById('P3newlength').innerHTML = longNames[current]['new'].length;
+	}
+//	------------------------------------------------------------
+	function readcurrentP3() {
+		let current = parseInt(document.getElementById('P3record').value);
+		if (current < 1 || current > longNames.length) {return;}
+		current  = current - 1;
+		longNames[current]['enable'] = document.getElementById('P3enable').checked;
+		longNames[current]['new'] = document.getElementById('P3new').value;
+		document.getElementById('P3newlength').innerHTML = longNames[current]['new'].length;
+	}
+//	------------------------------------------------------------
+	function P3update(ele) {
+		console.log('P3update:', ele);
+		switch (ele.id) {
+			case 'P3record':
+				displaycurrentP3();
+				break;
+			case 'P3maxfilename':
+				editLongFilenames();
+				break;
+			case 'P3enable':
+			case 'P3new':
+				readcurrentP3();
+				break;
+		}
+	}
+//	------------------------------------------------------------
+	function P3move(delta) {
+		let current = parseInt(document.getElementById('P3record').value);
+		document.getElementById('P3record').value = current + delta;
+		displaycurrentP3();
+	}
+//	------------------------------------------------------------
+	function P3make() {
+		let cmdscript = [];
+		const statement = document.getElementById('P3cmd').value;
+		console.log('P3make - statement:', statement);
+		longNames.forEach(ele => {
+			if (ele.enable) {
+				cmdscript.push(statement.replace('$A', ele.left).replace('$B', ele.right).replace('$old', ele.old).replace('$new', ele.new));
+			}
+		});
+		console.log('P3make - cmdscript:', cmdscript);
+		download('copysyno.bat', cmdscript.join("\r\n"));
+	}
+//	------------------------------------------------------------
+	function showresultfile(ele) {
+//		console.log('showresultfile: ele >', ele);
+		const file = ele.files[0];
+//		console.log('showresultfile: file >', file);
+		const target = 'resultfileinfo';
+		if (file) {
+			document.getElementById(target).innerHTML = '<strong>' + file.name + '</strong> (' + file.type + ')<br />' + file.size + ' bytes, last modified: ' + datetimeformat(file.lastModifiedDate);
+			document.getElementById('loadresultfilebutton').disabled = false;
+		} else {
+			document.getElementById(target).innerHTML = '';
+			document.getElementById('loadresultfilebutton').disabled = true;
+		}
+	}
+//	------------------------------------------------------------
+	function loadresultfile() {
+		console.log('loadresultfile');
+		const file = document.getElementById('resultfile').files[0];
+		let reader = new FileReader();
+		reader.readAsText(file);
+		reader.onload = function(e) {
+			resultsJSON = JSON.parse(reader.result);
+			showPage('P2');
+		}
+		reader.onerror = function() {
+			console.log(reader.error);
+		};
+	}
+//	------------------------------------------------------------
+	function datetimeformat(dt=new Date()) {
+		return dt.getFullYear() + '-' + padnum(dt.getMonth()+1, 2) + '-' + padnum(dt.getDate(), 2) + ' ' + padnum(dt.getHours(), 2) + ':' + padnum(dt.getMinutes(), 2) + ':' + padnum(dt.getSeconds(), 2);
+	}
+//	------------------------------------------------------------
+	function padnum(str, len, defaultpad='0') {
+		let out = defaultpad.repeat(len) + str;
+		return out.slice(-len);
+	}
+//	------------------------------------------------------------
+	function download(filename, text) {
+		let element = document.createElement('a');
+		element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+		element.setAttribute('download', filename);
+		element.style.display = 'none';
+		document.body.appendChild(element);
+		element.click();
+		document.body.removeChild(element);
+	}
+//	------------------------------------------------------------
+	function setupAccordion() {
+		let acc = document.getElementsByClassName("accordion");
+		let panel, i;
+		for (i = 0; i < acc.length; i++) {
+			acc[i].onclick = function() {
+				this.classList.toggle("active");
+				panel = this.nextElementSibling;
+				if (panel.style.maxHeight){
+					panel.style.maxHeight = null;
+				} else {
+					panel.style.maxHeight = (panel.scrollHeight+12) + "px";
+				} 
+			}
+		}
+	}
+//	------------------------------------------------------------
+	</script>
+</head>
+<body>
+	<h2>synoFileCheck</h2>
+	<h4>Verify data migration between file servers</h4>
+	<div id="P0">
+		<button id="buttonP1" type="button" class="button2" onclick="showPage('P1');">Select file</button>
+		<button id="buttonP2" type="button" class="button2" onclick="showPage('P2');">Results</button>
+		<button id="buttonP3" type="button" class="button2" onclick="showPage('P3');">Too long filenames</button>
+	</div>
+	<div id="P1">
+		<h3>Load json result file from synoFileCheck.py</h3>
+		<div>Select result file from synoFileCheck (.json)</div>
+		<input id="resultfile" type="file" accept=".json" onchange="showresultfile(this);" />
+		<div id="resultfileinfo" class="monotext"></div>
+		<button id="loadresultfilebutton" type="button" class="button2" onclick="loadresultfile();">Load json</button>
+	</div>
+	<div id="P2">
+		<h3>Display results</h3>
+		<div id="P2content"></div>
+	</div>
+	<div id="P3">
+		<h3>Edit too long filenames</h3>
+		<span class="">Record</span>
+		<input id="P3record" type="number" value=1 onchange="P3update(this);" style="width: 40px;" />
+		<span class="">of</span>
+		<input id="P3recordcount" size=4 type="number" style="width: 40px;" readonly />
+		<div class="P3label">Max length of filename</div>
+		<input id="P3maxfilename" type="number" value="142" onchange="P3update(this);" style="width: 40px;" />
+		<div class="P3label">Command statement</div>
+		<input id="P3cmd" type="text" onchange="P3update(this);" value="copy &quot;$A\$old&quot; &quot;$B\$new&quot;" />
+		<hr />
+		<div class="P3label">Enable</div>
+		<input id="P3enable" type="checkbox" onchange="P3update(this);" style="height: 40px; width: 40px;" />
+		<div class="P3label">Source folder</div>
+		<input id="P3folderA" type="text" readonly />
+		<div class="P3label">Destination folder</div>
+		<input id="P3folderB" type="text" readonly />
+		<div class="P3label">Old filename (too long)</div>
+		<textarea id="P3old" readonly></textarea>
+		<div class="P3label">New filename (shortened)</div>
+		<div id="P3newlength"></div>
+		<textarea id="P3new" onchange="P3update(this);"></textarea>
+		<div id="P3info"></div>
+		
+		<div class="buttonarea">
+		<button id="P3back" type="button" class="button2" onclick="P3move(-1);">&#11013;</button>
+		<button id="P3make" type="button" class="button2" onclick="P3make();">Generate commands</button>
+		<button id="P3next" type="button" class="button2" onclick="P3move(+1);">&#10145;</button>
+		</div>
+	</div>
+</body>
+</html>
